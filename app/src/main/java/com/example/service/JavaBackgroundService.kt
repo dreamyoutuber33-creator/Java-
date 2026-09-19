@@ -66,6 +66,8 @@ class JavaBackgroundService : Service() {
             ACTION_START -> {
                 startForegroundWithNotification()
                 _isRunning.value = true
+                getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
+                    .edit().putBoolean("pref_background_service", true).apply()
                 voiceEngine?.isContinuousListening = true
                 voiceEngine?.startListening()
             }
@@ -124,13 +126,15 @@ class JavaBackgroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val triggerIntent = Intent(this, JavaBackgroundService::class.java).apply {
-            action = ACTION_TRIGGER_LISTENING
+        // Action to open app and immediately start listening
+        val askJavaIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_START_LISTENING, true)
         }
-        val triggerPendingIntent = PendingIntent.getService(
+        val askJavaPendingIntent = PendingIntent.getActivity(
             this,
             1,
-            triggerIntent,
+            askJavaIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -150,7 +154,7 @@ class JavaBackgroundService : Service() {
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
-            .addAction(android.R.drawable.ic_btn_speak_now, "Ask Java", triggerPendingIntent)
+            .addAction(android.R.drawable.ic_btn_speak_now, "Ask Java", askJavaPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -181,6 +185,8 @@ class JavaBackgroundService : Service() {
     private fun stopBackgroundService() {
         _isRunning.value = false
         _isListeningState.value = false
+        getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("pref_background_service", false).apply()
         voiceEngine?.stopListening()
         voiceEngine?.stopSpeaking()
         voiceEngine?.destroy()

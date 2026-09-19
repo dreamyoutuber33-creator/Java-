@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
@@ -90,6 +91,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.update { it.copy(isBackgroundServiceActive = running) }
             }
         }
+        val prefs = application.getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("pref_background_service", false) && !JavaBackgroundService.isRunning.value) {
+            JavaBackgroundService.start(application)
+        }
     }
 
     fun onVoiceOrbClick() {
@@ -103,6 +108,12 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             else -> {
                 voiceEngine.startListening()
             }
+        }
+    }
+
+    fun requestVoiceInput() {
+        if (_uiState.value.state != AssistantState.LISTENING) {
+            voiceEngine.startListening()
         }
     }
 
