@@ -284,7 +284,90 @@ object OfflineIntentEngine {
                 else -> "Triggering haptic feedback."
             }
         }
-        // 17. CONVERSATIONAL ONLY (NO ACTION)
+        // 17. SEND WHATSAPP
+        else if (lower.contains("whatsapp") || lower.contains("whats app")) {
+            val contact = extractWhatsAppContact(lower)
+            val message = extractWhatsAppMessage(lower)
+            actions.add(
+                JavaAction(
+                    ActionCatalog.SEND_WHATSAPP,
+                    mapOf("contact" to contact, "message" to message)
+                )
+            )
+            speech = when (detectedLang) {
+                "Hindi", "Hinglish" -> "WhatsApp par $contact ko message bhej raha hoon."
+                else -> "Sending WhatsApp message to $contact."
+            }
+        }
+        // 18. ANSWER CALL
+        else if (lower.contains("answer call") || lower.contains("receive call") || lower.contains("call uthao") || lower.contains("phone uthao")) {
+            actions.add(
+                JavaAction(
+                    ActionCatalog.ANSWER_CALL,
+                    emptyMap()
+                )
+            )
+            speech = when (detectedLang) {
+                "Hindi", "Hinglish" -> "Incoming call utha raha hoon."
+                else -> "Answering incoming call."
+            }
+        }
+        // 19. END CALL
+        else if (lower.contains("end call") || lower.contains("cut call") || lower.contains("hang up") || lower.contains("call kato") || lower.contains("phone kato") || lower.contains("call band karo")) {
+            actions.add(
+                JavaAction(
+                    ActionCatalog.END_CALL,
+                    emptyMap()
+                )
+            )
+            speech = when (detectedLang) {
+                "Hindi", "Hinglish" -> "Call end kar raha hoon."
+                else -> "Ending current call."
+            }
+        }
+        // 20. SYSTEM GESTURE (SCROLL)
+        else if (lower.contains("scroll") || lower.contains("swipe")) {
+            val type = if (lower.contains("up") || lower.contains("upar")) "scroll_up" else "scroll_down"
+            actions.add(
+                JavaAction(
+                    ActionCatalog.SYSTEM_GESTURE,
+                    mapOf("type" to type)
+                )
+            )
+            val dirText = if (type == "scroll_up") "upar" else "neeche"
+            speech = when (detectedLang) {
+                "Hindi", "Hinglish" -> "Screen $dirText scroll kar raha hoon."
+                else -> "Scrolling screen ${if (type == "scroll_up") "up" else "down"}."
+            }
+        }
+        // 21. YOUTUBE SHORTS
+        else if (lower.contains("shorts") || lower.contains("short video")) {
+            actions.add(
+                JavaAction(
+                    ActionCatalog.OPEN_YOUTUBE_SHORTS,
+                    emptyMap()
+                )
+            )
+            speech = when (detectedLang) {
+                "Hindi", "Hinglish" -> "YouTube Shorts open kar raha hoon."
+                else -> "Opening YouTube Shorts."
+            }
+        }
+        // 22. CLICK ON SCREEN
+        else if (lower.startsWith("click") || lower.startsWith("tap") || lower.contains("click karo") || lower.contains("dabao")) {
+            val target = extractClickTarget(lower)
+            actions.add(
+                JavaAction(
+                    ActionCatalog.CLICK_ON_SCREEN,
+                    mapOf("text" to target)
+                )
+            )
+            speech = when (detectedLang) {
+                "Hindi", "Hinglish" -> "Screen par '$target' click kar raha hoon."
+                else -> "Clicking '$target' on screen."
+            }
+        }
+        // 23. CONVERSATIONAL ONLY (NO ACTION)
         else {
             speech = when {
                 lower.contains("who are you") || lower.contains("kaun ho") -> {
@@ -485,5 +568,42 @@ object OfflineIntentEngine {
             if (text.contains(app)) return app
         }
         return text.replace("open", "").replace("kholo", "").replace("khol do", "").trim().ifBlank { "settings" }
+    }
+
+    private fun extractWhatsAppContact(text: String): String {
+        // e.g. "send whatsapp to rahul message hello" or "whatsapp rahul ko karo"
+        val regex = Regex("(?:to|ko|pe|par)\\s+([a-zA-Z0-9_+]+)", RegexOption.IGNORE_CASE)
+        val match = regex.find(text)
+        if (match != null) {
+            val candidate = match.groupValues[1].trim()
+            if (!candidate.equals("message", ignoreCase = true) && !candidate.equals("whatsapp", ignoreCase = true)) {
+                return candidate
+            }
+        }
+        return "Contact"
+    }
+
+    private fun extractWhatsAppMessage(text: String): String {
+        val markers = listOf("message", "bol do", "kaho", "text", "that")
+        for (marker in markers) {
+            val idx = text.indexOf(marker, ignoreCase = true)
+            if (idx != -1) {
+                val candidate = text.substring(idx + marker.length).trim()
+                if (candidate.isNotBlank()) return candidate
+            }
+        }
+        return "Hello, sent via Java Assistant"
+    }
+
+    private fun extractClickTarget(text: String): String {
+        val clean = text.replace("click on", "", ignoreCase = true)
+            .replace("click", "", ignoreCase = true)
+            .replace("tap on", "", ignoreCase = true)
+            .replace("tap", "", ignoreCase = true)
+            .replace("par click karo", "", ignoreCase = true)
+            .replace("dabao", "", ignoreCase = true)
+            .replace("button", "", ignoreCase = true)
+            .trim()
+        return clean.ifBlank { "Next" }
     }
 }

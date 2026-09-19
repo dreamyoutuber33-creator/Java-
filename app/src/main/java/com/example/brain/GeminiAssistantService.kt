@@ -127,6 +127,12 @@ class GeminiAssistantService {
         - READ_MESSAGES: {}
         - READ_SCREEN_TEXT: {}
         - ACCESSIBILITY_ACTION: {"feature": "talkback" | "high_contrast" | "large_text" | "haptic_feedback", "state": "on" | "off"}
+        - SEND_WHATSAPP: {"contact": "name", "message": "message content"}
+        - SYSTEM_GESTURE: {"type": "scroll_up" | "scroll_down"}
+        - OPEN_YOUTUBE_SHORTS: {}
+        - ANSWER_CALL: {}
+        - END_CALL: {}
+        - CLICK_ON_SCREEN: {"text": "exact text or button name visible on screen"}
 
         4. Spoken & Captioning Rules:
         - Brevity: Keep the spoken response strictly 1 to 2 sentences.

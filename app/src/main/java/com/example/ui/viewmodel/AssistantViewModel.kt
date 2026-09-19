@@ -37,7 +37,10 @@ data class AssistantUiState(
     val history: List<ConversationTurn> = emptyList(),
     val errorMessage: String? = null,
     val apiKey: String = "",
-    val isBackgroundServiceActive: Boolean = false
+    val isMasterActive: Boolean = false,
+    val allowBackgroundExecution: Boolean = true,
+    val isBackgroundServiceActive: Boolean = false,
+    val isVoiceAssistantActive: Boolean = false
 )
 
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
@@ -91,29 +94,48 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.update { it.copy(isBackgroundServiceActive = running) }
             }
         }
+
         val prefs = application.getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("pref_background_service", false) && !JavaBackgroundService.isRunning.value) {
-            JavaBackgroundService.start(application)
+        val savedMaster = prefs.getBoolean("pref_master_switch", false)
+        val savedAllowBg = prefs.getBoolean("pref_allow_background_execution", true)
+
+        _uiState.update {
+            it.copy(
+                isMasterActive = savedMaster,
+                allowBackgroundExecution = savedAllowBg,
+                isVoiceAssistantActive = savedMaster
+            )
+        }
+
+        if (savedMaster) {
+            if (savedAllowBg) {
+                JavaBackgroundService.start(application)
+            } else {
+                voiceEngine.startContinuousListening()
+            }
         }
     }
 
     fun onVoiceOrbClick() {
-        when (_uiState.value.state) {
-            AssistantState.LISTENING -> {
-                voiceEngine.stopListening()
-            }
-            AssistantState.SPEAKING -> {
-                voiceEngine.stopSpeaking()
-            }
-            else -> {
-                voiceEngine.startListening()
+        if (!_uiState.value.isMasterActive) {
+            // Turn on Master continuous listening
+            setMasterActive(true)
+        } else {
+            when (_uiState.value.state) {
+                AssistantState.SPEAKING -> {
+                    voiceEngine.stopSpeaking()
+                }
+                else -> {
+                    // Quick toggle Master OFF
+                    setMasterActive(false)
+                }
             }
         }
     }
 
     fun requestVoiceInput() {
-        if (_uiState.value.state != AssistantState.LISTENING) {
-            voiceEngine.startListening()
+        if (!_uiState.value.isMasterActive) {
+            setMasterActive(true)
         }
     }
 
@@ -238,13 +260,74 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         if (!enabled) cancelAutoExecute()
     }
 
-    fun toggleBackgroundService(enable: Boolean) {
+    fun setMasterActive(enable: Boolean) {
         val app = getApplication<Application>()
-        if (enable) {
-            JavaBackgroundService.start(app)
-        } else {
-            JavaBackgroundService.stop(app)
+        val prefs = app.getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("pref_master_switch", enable).apply()
+
+        _uiState.update {
+            it.copy(
+                isMasterActive = enable,
+                isVoiceAssistantActive = enable
+            )
         }
+
+        if (enable) {
+            if (_uiState.value.allowBackgroundExecution) {
+                voiceEngine.stopContinuousListening()
+                JavaBackgroundService.start(app)
+            } else {
+                JavaBackgroundService.stop(app)
+                voiceEngine.startContinuousListening()
+            }
+        } else {
+            // Completely stop SpeechRecognizer, destroy service, and release microphone
+            JavaBackgroundService.stop(app)
+            voiceEngine.stopContinuousListening()
+            voiceEngine.stopSpeaking()
+            _uiState.update { it.copy(state = AssistantState.IDLE, partialText = "") }
+        }
+    }
+
+    fun setAllowBackgroundExecution(allow: Boolean) {
+        val app = getApplication<Application>()
+        val prefs = app.getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("pref_allow_background_execution", allow).apply()
+
+        _uiState.update { it.copy(allowBackgroundExecution = allow) }
+
+        if (_uiState.value.isMasterActive) {
+            if (allow) {
+                voiceEngine.stopContinuousListening()
+                JavaBackgroundService.start(app)
+            } else {
+                JavaBackgroundService.stop(app)
+                voiceEngine.startContinuousListening()
+            }
+        }
+    }
+
+    fun onActivityResume() {
+        // If Master Switch is ON but Background Execution is DISABLED, start/resume listening while Activity is visible
+        if (_uiState.value.isMasterActive && !_uiState.value.allowBackgroundExecution) {
+            voiceEngine.startContinuousListening()
+        }
+    }
+
+    fun onActivityPause() {
+        // If Master Switch is ON but Background Execution is DISABLED, stop listening when Activity is not visible
+        if (_uiState.value.isMasterActive && !_uiState.value.allowBackgroundExecution) {
+            voiceEngine.stopContinuousListening()
+            _uiState.update { it.copy(state = AssistantState.IDLE) }
+        }
+    }
+
+    fun toggleVoiceAssistant(enable: Boolean) {
+        setMasterActive(enable)
+    }
+
+    fun toggleBackgroundService(enable: Boolean) {
+        setAllowBackgroundExecution(enable)
     }
 
     fun setSpeechRate(rate: Float) {

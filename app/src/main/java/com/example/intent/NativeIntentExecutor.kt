@@ -18,9 +18,11 @@ import android.provider.CalendarContract
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
+import android.telecom.TelecomManager
 import android.util.Log
 import com.example.data.model.ActionCatalog
 import com.example.data.model.JavaAction
+import com.example.service.JavaAccessibilityService
 
 data class IntentExecutionResult(
     val success: Boolean,
@@ -63,6 +65,12 @@ class NativeIntentExecutor(private val context: Context) {
                 ActionCatalog.READ_MESSAGES -> executeReadMessages()
                 ActionCatalog.READ_SCREEN_TEXT -> executeReadScreenText()
                 ActionCatalog.ACCESSIBILITY_ACTION -> executeAccessibilityAction(action.args)
+                ActionCatalog.SEND_WHATSAPP -> executeSendWhatsApp(action.args)
+                ActionCatalog.ANSWER_CALL -> executeAnswerCall()
+                ActionCatalog.END_CALL -> executeEndCall()
+                ActionCatalog.SYSTEM_GESTURE -> executeSystemGesture(action.args)
+                ActionCatalog.OPEN_YOUTUBE_SHORTS -> executeOpenYouTubeShorts()
+                ActionCatalog.CLICK_ON_SCREEN -> executeClickOnScreen(action.args)
                 ActionCatalog.GET_DATETIME -> IntentExecutionResult(
                     success = true,
                     actionName = action.actionName,
@@ -564,6 +572,221 @@ class NativeIntentExecutor(private val context: Context) {
             success = success,
             actionName = ActionCatalog.ACCESSIBILITY_ACTION,
             userSummary = "Opened Accessibility Settings for $feature"
+        )
+    }
+
+    private fun resolveContactPhoneNumber(contactQuery: String): String {
+        val trimmed = contactQuery.trim()
+        val digitsOnly = trimmed.filter { it.isDigit() || it == '+' }
+        if (digitsOnly.length >= 7) {
+            return digitsOnly.replace("+", "")
+        }
+
+        try {
+            val cursor = context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                arrayOf("%$trimmed%"),
+                null
+            )
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val number = it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
+                    val cleaned = number.filter { char -> char.isDigit() || char == '+' }.replace("+", "")
+                    if (cleaned.isNotBlank()) return cleaned
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("NativeIntentExecutor", "Error looking up contact phone", e)
+        }
+        return digitsOnly.replace("+", "")
+    }
+
+    private fun executeSendWhatsApp(args: Map<String, String>): IntentExecutionResult {
+        val contact = args["contact"].orEmpty()
+        val message = args["message"].orEmpty()
+        val phoneNumber = resolveContactPhoneNumber(contact)
+        val encodedMessage = Uri.encode(message)
+        val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=$encodedMessage"
+
+        val whatsappIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            setPackage("com.whatsapp")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        return try {
+            context.startActivity(whatsappIntent)
+            IntentExecutionResult(
+                success = true,
+                actionName = ActionCatalog.SEND_WHATSAPP,
+                userSummary = "Sending WhatsApp message to $contact"
+            )
+        } catch (e: Exception) {
+            try {
+                val genericIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(genericIntent)
+                IntentExecutionResult(
+                    success = true,
+                    actionName = ActionCatalog.SEND_WHATSAPP,
+                    userSummary = "Opening WhatsApp web/link for $contact"
+                )
+            } catch (fallbackError: Exception) {
+                IntentExecutionResult(
+                    success = false,
+                    actionName = ActionCatalog.SEND_WHATSAPP,
+                    userSummary = "WhatsApp is not installed on this device",
+                    error = fallbackError.message
+                )
+            }
+        }
+    }
+
+    private fun executeAnswerCall(): IntentExecutionResult {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+            return try {
+                @Suppress("DEPRECATION")
+                telecomManager?.acceptRingingCall()
+                IntentExecutionResult(
+                    success = true,
+                    actionName = ActionCatalog.ANSWER_CALL,
+                    userSummary = "Answered incoming call"
+                )
+            } catch (e: SecurityException) {
+                IntentExecutionResult(
+                    success = false,
+                    actionName = ActionCatalog.ANSWER_CALL,
+                    userSummary = "Permission ANSWER_PHONE_CALLS required to answer call",
+                    error = e.message
+                )
+            } catch (e: Exception) {
+                IntentExecutionResult(
+                    success = false,
+                    actionName = ActionCatalog.ANSWER_CALL,
+                    userSummary = "Could not answer call: ${e.message}",
+                    error = e.message
+                )
+            }
+        } else {
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.ANSWER_CALL,
+                userSummary = "Answering calls requires Android 8.0+"
+            )
+        }
+    }
+
+    private fun executeEndCall(): IntentExecutionResult {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+            return try {
+                val ended = telecomManager?.endCall() ?: false
+                IntentExecutionResult(
+                    success = ended,
+                    actionName = ActionCatalog.END_CALL,
+                    userSummary = if (ended) "Call ended" else "No active call found"
+                )
+            } catch (e: SecurityException) {
+                IntentExecutionResult(
+                    success = false,
+                    actionName = ActionCatalog.END_CALL,
+                    userSummary = "Permission required to end call",
+                    error = e.message
+                )
+            } catch (e: Exception) {
+                IntentExecutionResult(
+                    success = false,
+                    actionName = ActionCatalog.END_CALL,
+                    userSummary = "Failed to end call: ${e.message}",
+                    error = e.message
+                )
+            }
+        } else {
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.END_CALL,
+                userSummary = "Ending calls requires Android 9.0+"
+            )
+        }
+    }
+
+    private fun executeSystemGesture(args: Map<String, String>): IntentExecutionResult {
+        val type = args["type"] ?: "scroll_down"
+        val service = JavaAccessibilityService.instance
+        if (service == null) {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivitySafely(intent)
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.SYSTEM_GESTURE,
+                userSummary = "Please enable 'Java Voice Assistant Actions' in Accessibility Settings to perform screen gestures"
+            )
+        }
+
+        val success = service.scroll(type)
+        val directionText = if (type.contains("up", ignoreCase = true)) "up" else "down"
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.SYSTEM_GESTURE,
+            userSummary = if (success) "Scrolled screen $directionText" else "Failed to dispatch scroll gesture"
+        )
+    }
+
+    private fun executeOpenYouTubeShorts(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        if (service != null && service.openYouTubeShorts()) {
+            return IntentExecutionResult(
+                success = true,
+                actionName = ActionCatalog.OPEN_YOUTUBE_SHORTS,
+                userSummary = "Opening YouTube Shorts"
+            )
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube://shorts/")).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val fallback = "https://www.youtube.com/shorts"
+        val success = startActivitySafely(intent, fallback)
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.OPEN_YOUTUBE_SHORTS,
+            userSummary = "Opening YouTube Shorts"
+        )
+    }
+
+    private fun executeClickOnScreen(args: Map<String, String>): IntentExecutionResult {
+        val targetText = args["text"].orEmpty()
+        if (targetText.isBlank()) {
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.CLICK_ON_SCREEN,
+                userSummary = "No target text provided to click"
+            )
+        }
+
+        val service = JavaAccessibilityService.instance
+        if (service == null) {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivitySafely(intent)
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.CLICK_ON_SCREEN,
+                userSummary = "Enable 'Java Voice Assistant Actions' in Accessibility Settings to auto-click screen elements"
+            )
+        }
+
+        val clicked = service.clickNodeWithText(targetText)
+        return IntentExecutionResult(
+            success = clicked,
+            actionName = ActionCatalog.CLICK_ON_SCREEN,
+            userSummary = if (clicked) "Clicked '$targetText' on screen" else "Could not find clickable element for '$targetText'"
         )
     }
 

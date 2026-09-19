@@ -44,6 +44,16 @@ class MainActivity : ComponentActivity() {
         handleLaunchIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        assistantViewModel.onActivityResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        assistantViewModel.onActivityPause()
+    }
+
     private fun handleLaunchIntent(intent: Intent?) {
         if (intent == null) return
         val shouldStartListening = intent.getBooleanExtra(EXTRA_START_LISTENING, false) ||

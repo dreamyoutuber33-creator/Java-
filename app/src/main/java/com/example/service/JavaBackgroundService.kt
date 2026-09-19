@@ -66,10 +66,7 @@ class JavaBackgroundService : Service() {
             ACTION_START -> {
                 startForegroundWithNotification()
                 _isRunning.value = true
-                getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
-                    .edit().putBoolean("pref_background_service", true).apply()
-                voiceEngine?.isContinuousListening = true
-                voiceEngine?.startListening()
+                voiceEngine?.startContinuousListening()
             }
         }
 
@@ -185,9 +182,7 @@ class JavaBackgroundService : Service() {
     private fun stopBackgroundService() {
         _isRunning.value = false
         _isListeningState.value = false
-        getSharedPreferences("java_assistant_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("pref_background_service", false).apply()
-        voiceEngine?.stopListening()
+        voiceEngine?.stopContinuousListening()
         voiceEngine?.stopSpeaking()
         voiceEngine?.destroy()
         voiceEngine = null

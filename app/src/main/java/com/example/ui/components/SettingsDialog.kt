@@ -56,12 +56,12 @@ import com.example.ui.theme.TextSecondaryDark
 @Composable
 fun SettingsDialog(
     isAutoExecuteEnabled: Boolean,
-    isBackgroundServiceActive: Boolean,
+    allowBackgroundExecution: Boolean,
     speechRate: Float,
     speechPitch: Float,
     currentApiKey: String,
     onToggleAutoExecute: (Boolean) -> Unit,
-    onToggleBackgroundService: (Boolean) -> Unit,
+    onToggleAllowBackgroundExecution: (Boolean) -> Unit,
     onSpeechRateChange: (Float) -> Unit,
     onSpeechPitchChange: (Float) -> Unit,
     onUpdateApiKey: (String) -> Unit,
@@ -162,7 +162,7 @@ fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Background Service Toggle
+                // Allow Background Execution Toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -170,22 +170,25 @@ fun SettingsDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Background Hands-Free Service",
-                            style = MaterialTheme.typography.titleSmall.copy(color = TextPrimaryDark)
+                            text = "Allow Background Execution",
+                            style = MaterialTheme.typography.titleSmall.copy(color = TextPrimaryDark, fontWeight = FontWeight.SemiBold)
                         )
                         Text(
-                            text = "Stay listening for “Hey Java” with an ongoing notification even when app is minimized",
+                            text = if (allowBackgroundExecution)
+                                "Runs continuous listening in a ForegroundService with persistent notification when app is closed"
+                            else
+                                "Only listens while app is open on screen; stops when app is closed",
                             style = MaterialTheme.typography.bodySmall.copy(color = TextSecondaryDark)
                         )
                     }
                     Switch(
-                        checked = isBackgroundServiceActive,
-                        onCheckedChange = onToggleBackgroundService,
+                        checked = allowBackgroundExecution,
+                        onCheckedChange = onToggleAllowBackgroundExecution,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = OrbCyan,
                             checkedTrackColor = OrbPurple.copy(alpha = 0.5f)
                         ),
-                        modifier = Modifier.testTag("background_service_switch")
+                        modifier = Modifier.testTag("allow_background_execution_switch")
                     )
                 }
 

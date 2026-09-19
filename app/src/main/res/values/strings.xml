@@ -12,4 +12,12 @@
     <string name="auto_execute">Auto-executing in %d seconds…</string>
     <string name="cancel">Cancel</string>
     <string name="try_saying">Try asking:</string>
+    <string name="accessibility_service_label">Java Voice Assistant Actions</string>
+    <string name="accessibility_service_description">Allows Java to perform gestures like scrolling, clicking elements on screen, and navigating YouTube Shorts on your behalf.</string>
+    <string name="master_switch_title">Master Assistant Switch</string>
+    <string name="master_switch_desc_on">Continuous listening active • Ready for commands</string>
+    <string name="master_switch_desc_off">Assistant off • Microphone released</string>
+    <string name="background_execution_title">Allow Background Execution</string>
+    <string name="background_execution_desc_on">Keeps listening with persistent notification when app is closed</string>
+    <string name="background_execution_desc_off">Only listens while app is open on screen</string>
 </resources>

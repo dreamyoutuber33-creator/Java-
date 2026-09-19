@@ -68,4 +68,10 @@ object ActionCatalog {
     const val READ_MESSAGES = "READ_MESSAGES"
     const val READ_SCREEN_TEXT = "READ_SCREEN_TEXT"
     const val ACCESSIBILITY_ACTION = "ACCESSIBILITY_ACTION"
+    const val SEND_WHATSAPP = "SEND_WHATSAPP"
+    const val SYSTEM_GESTURE = "SYSTEM_GESTURE"
+    const val OPEN_YOUTUBE_SHORTS = "OPEN_YOUTUBE_SHORTS"
+    const val ANSWER_CALL = "ANSWER_CALL"
+    const val END_CALL = "END_CALL"
+    const val CLICK_ON_SCREEN = "CLICK_ON_SCREEN"
 }
