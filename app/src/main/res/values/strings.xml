@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Java</string>
+    <string name="assistant_tagline">Your hands-free personal voice assistant</string>
+    <string name="wake_word_hint">Say "Hey Java" or tap the orb to talk</string>
+    <string name="listening">Listening…</string>
+    <string name="processing">Processing with Java…</string>
+    <string name="speaking">Java is responding…</string>
+    <string name="speech_recognized_label">You said</string>
+    <string name="action_label">System Action</string>
+    <string name="args_label">Intent Arguments</string>
+    <string name="execute_intent">Execute Now</string>
+    <string name="auto_execute">Auto-executing in %d seconds…</string>
+    <string name="cancel">Cancel</string>
+    <string name="try_saying">Try asking:</string>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "Java",
+  "description": "Advanced hands-free personal voice assistant for Android with Siri-like fluid voice interactions, native Android intent execution, live captions, and Hindi/English/Hinglish multilingual support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
