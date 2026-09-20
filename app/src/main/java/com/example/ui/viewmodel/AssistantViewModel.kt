@@ -14,6 +14,7 @@ import com.example.intent.IntentExecutionResult
 import com.example.intent.NativeIntentExecutor
 import com.example.service.JavaBackgroundService
 import com.example.speech.VoiceEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -191,7 +192,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
                 // If actionable intent exists and auto-execute is enabled, start countdown
                 if (response.actions.isNotEmpty() && _uiState.value.isAutoExecuteEnabled) {
-                    startAutoExecuteCountdown(response.actions.first())
+                    startAutoExecuteCountdown(response.actions)
                 }
 
             } catch (e: Exception) {
@@ -205,7 +206,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun startAutoExecuteCountdown(action: JavaAction) {
+    private fun startAutoExecuteCountdown(actions: List<JavaAction>) {
         autoExecuteJob?.cancel()
         autoExecuteJob = viewModelScope.launch {
             for (sec in 3 downTo 1) {
@@ -213,7 +214,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 delay(1000)
             }
             _uiState.update { it.copy(autoExecuteSecondsLeft = null) }
-            executeAction(action, isAuto = true)
+            executeActionsChain(actions, isAuto = true)
         }
     }
 
@@ -223,23 +224,33 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(autoExecuteSecondsLeft = null) }
     }
 
-    fun executeAction(action: JavaAction, isAuto: Boolean = false) {
+    fun executeActionsChain(actions: List<JavaAction>, isAuto: Boolean = false) {
         cancelAutoExecute()
-        val result = intentExecutor.execute(action)
-        _uiState.update { current ->
-            val updatedHistory = current.history.map { turn ->
-                if (turn.response.actions.contains(action)) {
-                    turn.copy(
-                        isAutoExecuted = isAuto,
-                        executionResult = result.userSummary
-                    )
-                } else turn
+        viewModelScope.launch(Dispatchers.IO) {
+            var lastRes: IntentExecutionResult? = null
+            for (action in actions) {
+                val result = intentExecutor.execute(action)
+                lastRes = result
             }
-            current.copy(
-                lastExecutionResult = result,
-                history = updatedHistory
-            )
+            _uiState.update { current ->
+                val updatedHistory = current.history.map { turn ->
+                    if (turn.response.actions.any { actions.contains(it) }) {
+                        turn.copy(
+                            isAutoExecuted = isAuto,
+                            executionResult = lastRes?.userSummary
+                        )
+                    } else turn
+                }
+                current.copy(
+                    lastExecutionResult = lastRes,
+                    history = updatedHistory
+                )
+            }
         }
+    }
+
+    fun executeAction(action: JavaAction, isAuto: Boolean = false) {
+        executeActionsChain(listOf(action), isAuto)
     }
 
     fun replaySpeech() {

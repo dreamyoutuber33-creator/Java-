@@ -40,7 +40,7 @@ data class GeminiPart(
 
 @JsonClass(generateAdapter = true)
 data class GeminiGenConfig(
-    @Json(name = "temperature") val temperature: Float? = 0.4f,
+    @Json(name = "temperature") val temperature: Float? = 0.2f,
     @Json(name = "topP") val topP: Float? = 0.9f
 )
 
@@ -55,8 +55,14 @@ data class GeminiCandidate(
 )
 
 interface GeminiApi {
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    @POST("v1beta/models/gemini-2.0-flash:generateContent")
     suspend fun generateContent(
+        @Query("key") apiKey: String,
+        @Body request: GeminiGenerateRequest
+    ): GeminiGenerateResponse
+
+    @POST("v1beta/models/gemini-1.5-flash:generateContent")
+    suspend fun generateContentFallback(
         @Query("key") apiKey: String,
         @Body request: GeminiGenerateRequest
     ): GeminiGenerateResponse
@@ -83,62 +89,65 @@ class GeminiAssistantService {
     private val api = retrofit.create(GeminiApi::class.java)
 
     private val systemPrompt = """
-        You are "Java", an advanced, hands-free personal voice assistant designed for Android, functioning identically to Siri. You are designed to be fully compliant with Google Play Store assistant and accessibility policies.
+You are the AI brain of "JAVA", an advanced Android Voice Assistant. Your ONLY job is to understand natural language (Hindi/English/Hinglish) and output a STRICT RAW JSON ARRAY of logical, executable actions.
 
-        1. Persona & Identity:
-        - Name: "Java"
-        - Wake Word Trigger: "Hey Java" or "Java"
-        - Nature: Fast, confident, polite, helpful, and natural—identical to a native operating system assistant like Siri.
-        - Multilingual Support: Seamlessly detect and respond in Hindi, English, or Hinglish matching the user's preferred spoken dialect.
+CRITICAL RULES (NEVER BREAK THESE):
+1. RAW JSON ONLY: Output pure JSON starting with `[` and ending with `]`. NO markdown, NO code blocks (```json), NO explanations.
+2. DYNAMIC ENTITY EXTRACTION (BUG FIX): NEVER hardcode names or search queries. If the user says "Search CarryMinati", the query is "CarryMinati". If they say "Message Rahul", the contact is "Rahul". Extract EXACT values from the prompt.
+3. MULTI-STEP LOGIC: Chain actions logically. If asked to search on YouTube: OPEN_APP -> CLICK Search -> TYPE_TEXT -> SYSTEM_GESTURE (press_enter). 
+4. WHATSAPP/SMS AUTOMATION (BUG FIX): To actually send a message, every SEND_WHATSAPP or SEND_SMS action MUST be immediately followed by: {"action": "CLICK_ON_SCREEN", "target_text": "Send"}.
+5. SPEECH CONFIRMATION: Always end the array with a "SPEECH_RESPONSE" detailing what was actually executed.
 
-        2. Play Store, App & Device Actions (Android Native Compliant):
-        When an actionable request is made, output structured ACTION commands using standard Android intents, followed by a single spoken response line (SPEECH) for TTS and live captions.
+SUPPORTED ACTIONS & EXACT SCHEMA:
 
-        Output Protocol:
-        ACTION: [ACTION_NAME] | ARGS: {"key": "value"}
-        SPEECH: [1-sentence concise spoken response for TTS and live captioning]
+{"action": "OPEN_APP", "app_name": "App Name"}
+{"action": "CLICK_ON_SCREEN", "target_text": "Visible text like 'Shorts', 'Send', 'Search'"}
+{"action": "TYPE_TEXT", "text": "Exact text to type from user command"}
+{"action": "SYSTEM_GESTURE", "type": "scroll_down" | "scroll_up" | "press_enter"}
+{"action": "SEND_WHATSAPP", "contact": "Exact Name", "message": "Exact Text"}
+{"action": "SEND_SMS", "contact": "Exact Name", "message": "Exact Text"}
+{"action": "TOGGLE_SETTING", "setting": "wifi" | "flashlight" | "bluetooth", "state": "on" | "off"}
+{"action": "TAKE_SCREENSHOT"}
+{"action": "START_SCREEN_RECORDING"}
+{"action": "STOP_SCREEN_RECORDING"}
+{"action": "LOCK_SCREEN"}
+{"action": "ANSWER_CALL"}
+{"action": "END_CALL"}
+{"action": "SPEECH_RESPONSE", "text": "Short conversational Hindi/Hinglish reply"}
 
-        3. Complete Action Catalog:
-        - PLAY_STORE_ACTION: {"mode": "open_store" | "search_app" | "app_details", "query": "app_name"}
-        - OPEN_APP: {"app_name": "name_of_app"}
-        - YOUTUBE_SEARCH: {"query": "search query"}
-        - WEB_SEARCH: {"query": "search query"}
-        - OPEN_URL: {"url": "https://..."}
-        - SET_ALARM: {"time": "HH:MM", "label": "label"}
-        - SET_TIMER: {"seconds": 300, "label": "label"}
-        - SET_REMINDER: {"text": "reminder content", "time": "time"}
-        - CREATE_CALENDAR_EVENT: {"title": "title", "start_time": "YYYY-MM-DDTHH:MM", "location": "text"}
-        - MAKE_CALL: {"contact": "contact name or number"}
-        - SEND_SMS: {"contact": "contact name", "message": "text"}
-        - SEARCH_CONTACTS: {"query": "name"}
-        - PLAY_MUSIC: {"query": "song or artist", "app": "spotify/youtube_music/default"}
-        - CONTROL_MEDIA: {"command": "pause" | "play" | "next" | "previous" | "volume_up" | "volume_down"}
-        - START_NAVIGATION: {"destination": "location"}
-        - GET_WEATHER: {"location": "city_name"}
-        - GET_DATETIME: {}
-        - CALCULATE: {"expression": "math expression"}
-        - TRANSLATE: {"text": "text", "target_language": "target language"}
-        - DICTATE_TEXT: {"text": "text to transcribe"}
-        - SEND_EMAIL: {"recipient": "email or name", "subject": "subject", "body": "content"}
-        - CAMERA_ACTION: {"mode": "take_photo" | "record_video" | "open_camera"}
-        - TOGGLE_SETTING: {"setting": "wifi" | "bluetooth" | "flashlight" | "hotspot" | "airplane_mode", "state": "on" | "off"}
-        - CONTROL_SMART_HOME: {"device": "device_name", "action": "on" | "off" | "dim" | "set_temp", "value": "optional"}
-        - READ_NOTIFICATIONS: {}
-        - READ_MESSAGES: {}
-        - READ_SCREEN_TEXT: {}
-        - ACCESSIBILITY_ACTION: {"feature": "talkback" | "high_contrast" | "large_text" | "haptic_feedback", "state": "on" | "off"}
-        - SEND_WHATSAPP: {"contact": "name", "message": "message content"}
-        - SYSTEM_GESTURE: {"type": "scroll_up" | "scroll_down"}
-        - OPEN_YOUTUBE_SHORTS: {}
-        - ANSWER_CALL: {}
-        - END_CALL: {}
-        - CLICK_ON_SCREEN: {"text": "exact text or button name visible on screen"}
+EXAMPLES (OUTPUT MUST BE EXACTLY LIKE THIS FORMAT):
 
-        4. Spoken & Captioning Rules:
-        - Brevity: Keep the spoken response strictly 1 to 2 sentences.
-        - Screenless & Caption-friendly: Never output markdown, asterisks (*), bullet points, URLs, or emojis in the SPEECH line.
-        - Conversational Only: If the query is pure conversation, trivia, or advice (not a device action), output only the spoken response without any ACTION line.
-    """.trimIndent()
+User: "YouTube me CarryMinati search karo"
+[
+  {"action": "OPEN_APP", "app_name": "YouTube"},
+  {"action": "CLICK_ON_SCREEN", "target_text": "Search"},
+  {"action": "TYPE_TEXT", "text": "CarryMinati"},
+  {"action": "SYSTEM_GESTURE", "type": "press_enter"},
+  {"action": "SPEECH_RESPONSE", "text": "CarryMinati search kar diya hai."}
+]
+
+User: "WhatsApp par Rohit ko jaldi aao bhejo"
+[
+  {"action": "SEND_WHATSAPP", "contact": "Rohit", "message": "Jaldi aao"},
+  {"action": "CLICK_ON_SCREEN", "target_text": "Send"},
+  {"action": "SPEECH_RESPONSE", "text": "Rohit ko message send kar diya hai."}
+]
+
+User: "Screen recording start karo aur Shorts chalao"
+[
+  {"action": "START_SCREEN_RECORDING"},
+  {"action": "OPEN_APP", "app_name": "YouTube"},
+  {"action": "CLICK_ON_SCREEN", "target_text": "Shorts"},
+  {"action": "SPEECH_RESPONSE", "text": "Recording start karke Shorts chala raha hoon."}
+]
+
+User: "Instagram kholo aur scroll karo"
+[
+  {"action": "OPEN_APP", "app_name": "Instagram"},
+  {"action": "SYSTEM_GESTURE", "type": "scroll_down"},
+  {"action": "SPEECH_RESPONSE", "text": "Instagram open karke scroll kar diya hai."}
+]
+""".trimIndent()
 
     suspend fun query(prompt: String, apiKey: String): AssistantResponse = withContext(Dispatchers.IO) {
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
@@ -159,7 +168,12 @@ class GeminiAssistantService {
                 generationConfig = GeminiGenConfig(temperature = 0.2f)
             )
 
-            val response = api.generateContent(apiKey = apiKey, request = request)
+            val response = try {
+                api.generateContent(apiKey = apiKey, request = request)
+            } catch (e: Exception) {
+                Log.w("GeminiAssistantService", "Gemini 2.0 Flash call failed, retrying with 1.5 Flash fallback", e)
+                api.generateContentFallback(apiKey = apiKey, request = request)
+            }
             val rawText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 ?: return@withContext OfflineIntentEngine.parse(prompt)
 
@@ -171,15 +185,24 @@ class GeminiAssistantService {
     }
 
     fun parseAssistantOutput(rawText: String, originalPrompt: String): AssistantResponse {
+        val trimmed = rawText.trim()
+        // If the model responded with JSON array format
+        if (trimmed.contains("[") && trimmed.contains("]")) {
+            val parsedResponse = AiJsonParser.parse(trimmed, originalPrompt)
+            if (parsedResponse.actions.isNotEmpty() || parsedResponse.speech.isNotBlank()) {
+                return parsedResponse
+            }
+        }
+
+        // Fallback for ACTION:... | ARGS: format or conversational text
         val actions = mutableListOf<JavaAction>()
         var speech = ""
 
         val lines = rawText.lines()
         for (line in lines) {
-            val trimmed = line.trim()
-            if (trimmed.startsWith("ACTION:")) {
-                // Parse ACTION: [NAME] | ARGS: {...}
-                val actionPart = trimmed.removePrefix("ACTION:").trim()
+            val lineTrimmed = line.trim()
+            if (lineTrimmed.startsWith("ACTION:")) {
+                val actionPart = lineTrimmed.removePrefix("ACTION:").trim()
                 val dividerIdx = actionPart.indexOf("|")
                 val actionName = if (dividerIdx != -1) {
                     actionPart.substring(0, dividerIdx).trim()
@@ -191,7 +214,6 @@ class GeminiAssistantService {
                 val argsIdx = actionPart.indexOf("ARGS:")
                 if (argsIdx != -1) {
                     val jsonSnippet = actionPart.substring(argsIdx + 5).trim()
-                    // Extract key-value pairs via regex
                     val matcher = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"").matcher(jsonSnippet)
                     while (matcher.find()) {
                         val k = matcher.group(1) ?: ""
@@ -204,49 +226,26 @@ class GeminiAssistantService {
                 if (actionName.isNotBlank()) {
                     actions.add(JavaAction(actionName, argsMap))
                 }
-            } else if (trimmed.startsWith("SPEECH:")) {
-                speech = trimmed.removePrefix("SPEECH:").trim()
+            } else if (lineTrimmed.startsWith("SPEECH:")) {
+                speech = lineTrimmed.removePrefix("SPEECH:").trim()
             }
         }
 
-        // If no explicit SPEECH line was parsed, clean up the text
         if (speech.isBlank()) {
             val nonActionLines = lines.filterNot { it.trim().startsWith("ACTION:") }
             speech = nonActionLines.joinToString(" ").trim()
         }
 
-        // Clean speech for TTS compliance (remove markdown, asterisks, emojis)
         val cleanSpeech = speech
             .replace(Regex("[*#_`~]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
 
-        val detectedLanguage = detectLanguage(originalPrompt + " " + cleanSpeech)
-
         return AssistantResponse(
             rawText = rawText,
             actions = actions,
             speech = cleanSpeech,
-            detectedLanguage = detectedLanguage
+            detectedLanguage = "Hinglish"
         )
-    }
-
-    private fun detectLanguage(text: String): String {
-        for (char in text) {
-            if (char in '\u0900'..'\u097F') {
-                return "Hindi"
-            }
-        }
-        val lower = text.lowercase()
-        val hinglishMarkers = listOf(
-            "karo", "khol", "laga", "baje", "subah", "hai", "hoon", "aur", "pe", "par",
-            "batao", "sunao", "chalao", "kaisa", "kaun", "kya", "ko", "mera", "meri"
-        )
-        for (marker in hinglishMarkers) {
-            if (lower.split(Regex("\\s+")).contains(marker)) {
-                return "Hinglish"
-            }
-        }
-        return "English"
     }
 }

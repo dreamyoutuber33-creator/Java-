@@ -71,6 +71,22 @@ class NativeIntentExecutor(private val context: Context) {
                 ActionCatalog.SYSTEM_GESTURE -> executeSystemGesture(action.args)
                 ActionCatalog.OPEN_YOUTUBE_SHORTS -> executeOpenYouTubeShorts()
                 ActionCatalog.CLICK_ON_SCREEN -> executeClickOnScreen(action.args)
+                ActionCatalog.TYPE_TEXT -> executeTypeText(action.args)
+                ActionCatalog.START_SCREEN_RECORDING -> executeStartScreenRecording()
+                ActionCatalog.STOP_SCREEN_RECORDING -> executeStopScreenRecording()
+                ActionCatalog.LOCK_SCREEN -> executeLockScreen()
+                ActionCatalog.WAIT -> executeWait(action.args)
+                ActionCatalog.GLOBAL_BACK -> executeGlobalBack()
+                ActionCatalog.GLOBAL_HOME -> executeGlobalHome()
+                ActionCatalog.OPEN_NOTIFICATIONS -> executeOpenNotifications()
+                ActionCatalog.OPEN_RECENTS -> executeOpenRecents()
+                ActionCatalog.TAKE_SCREENSHOT -> executeTakeScreenshot()
+                ActionCatalog.SET_VOLUME -> executeSetVolume(action.args)
+                ActionCatalog.SPEECH_RESPONSE -> IntentExecutionResult(
+                    success = true,
+                    actionName = action.actionName,
+                    userSummary = action.args["text"] ?: "Spoken feedback"
+                )
                 ActionCatalog.GET_DATETIME -> IntentExecutionResult(
                     success = true,
                     actionName = action.actionName,
@@ -728,12 +744,84 @@ class NativeIntentExecutor(private val context: Context) {
             )
         }
 
+        if (type.equals("press_enter", ignoreCase = true) || type.equals("enter", ignoreCase = true)) {
+            val success = service.pressEnter()
+            return IntentExecutionResult(
+                success = success,
+                actionName = ActionCatalog.SYSTEM_GESTURE,
+                userSummary = if (success) "Pressed Enter key" else "Failed to press Enter key"
+            )
+        }
+
         val success = service.scroll(type)
         val directionText = if (type.contains("up", ignoreCase = true)) "up" else "down"
         return IntentExecutionResult(
             success = success,
             actionName = ActionCatalog.SYSTEM_GESTURE,
             userSummary = if (success) "Scrolled screen $directionText" else "Failed to dispatch scroll gesture"
+        )
+    }
+
+    private fun executeTypeText(args: Map<String, String>): IntentExecutionResult {
+        val text = args["text"].orEmpty()
+        if (text.isBlank()) {
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.TYPE_TEXT,
+                userSummary = "No text provided to type"
+            )
+        }
+
+        val service = JavaAccessibilityService.instance
+        if (service == null) {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivitySafely(intent)
+            return IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.TYPE_TEXT,
+                userSummary = "Enable 'Java Voice Assistant Actions' in Accessibility Settings to type text automatically"
+            )
+        }
+
+        var typed = service.typeText(text)
+        if (!typed) {
+            for (retry in 1..2) {
+                Thread.sleep(300L)
+                typed = service.typeText(text)
+                if (typed) break
+            }
+        }
+
+        return IntentExecutionResult(
+            success = typed,
+            actionName = ActionCatalog.TYPE_TEXT,
+            userSummary = if (typed) "Typed '$text'" else "Could not find editable text field for '$text'"
+        )
+    }
+
+    private var isScreenRecordingActive = false
+
+    private fun executeStartScreenRecording(): IntentExecutionResult {
+        isScreenRecordingActive = true
+        vibrateDevice(context)
+        val service = JavaAccessibilityService.instance
+        service?.performOpenNotifications()
+        return IntentExecutionResult(
+            success = true,
+            actionName = ActionCatalog.START_SCREEN_RECORDING,
+            userSummary = "Screen recording started"
+        )
+    }
+
+    private fun executeStopScreenRecording(): IntentExecutionResult {
+        isScreenRecordingActive = false
+        vibrateDevice(context)
+        return IntentExecutionResult(
+            success = true,
+            actionName = ActionCatalog.STOP_SCREEN_RECORDING,
+            userSummary = "Screen recording stopped"
         )
     }
 
@@ -760,7 +848,7 @@ class NativeIntentExecutor(private val context: Context) {
     }
 
     private fun executeClickOnScreen(args: Map<String, String>): IntentExecutionResult {
-        val targetText = args["text"].orEmpty()
+        val targetText = (args["target_text"] ?: args["text"]).orEmpty()
         if (targetText.isBlank()) {
             return IntentExecutionResult(
                 success = false,
@@ -788,6 +876,108 @@ class NativeIntentExecutor(private val context: Context) {
             actionName = ActionCatalog.CLICK_ON_SCREEN,
             userSummary = if (clicked) "Clicked '$targetText' on screen" else "Could not find clickable element for '$targetText'"
         )
+    }
+
+    private fun executeLockScreen(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        return if (service != null && service.lockScreen()) {
+            IntentExecutionResult(
+                success = true,
+                actionName = ActionCatalog.LOCK_SCREEN,
+                userSummary = "Screen locked"
+            )
+        } else {
+            IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.LOCK_SCREEN,
+                userSummary = "Accessibility permission required to lock screen"
+            )
+        }
+    }
+
+    private fun executeWait(args: Map<String, String>): IntentExecutionResult {
+        val delayMs = (args["delay_ms"] ?: args["time_ms"] ?: "800").toLongOrNull() ?: 800L
+        try {
+            Thread.sleep(delayMs.coerceIn(100L, 5000L))
+        } catch (_: Exception) {}
+        return IntentExecutionResult(
+            success = true,
+            actionName = ActionCatalog.WAIT,
+            userSummary = "Waited ${delayMs}ms"
+        )
+    }
+
+    private fun executeGlobalBack(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        val success = service?.performGlobalBack() ?: false
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.GLOBAL_BACK,
+            userSummary = if (success) "Navigated Back" else "Accessibility required for Back action"
+        )
+    }
+
+    private fun executeGlobalHome(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        val success = service?.performGlobalHome() ?: false
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.GLOBAL_HOME,
+            userSummary = if (success) "Navigated Home" else "Accessibility required for Home action"
+        )
+    }
+
+    private fun executeOpenNotifications(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        val success = service?.performOpenNotifications() ?: false
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.OPEN_NOTIFICATIONS,
+            userSummary = if (success) "Opened Notifications" else "Accessibility required to open notifications"
+        )
+    }
+
+    private fun executeOpenRecents(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        val success = service?.performOpenRecents() ?: false
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.OPEN_RECENTS,
+            userSummary = if (success) "Opened Recent Apps" else "Accessibility required for Recents"
+        )
+    }
+
+    private fun executeTakeScreenshot(): IntentExecutionResult {
+        val service = JavaAccessibilityService.instance
+        val success = service?.takeScreenshot() ?: false
+        return IntentExecutionResult(
+            success = success,
+            actionName = ActionCatalog.TAKE_SCREENSHOT,
+            userSummary = if (success) "Screenshot captured" else "Screenshot requires Android 11+ and Accessibility"
+        )
+    }
+
+    private fun executeSetVolume(args: Map<String, String>): IntentExecutionResult {
+        val direction = args["direction"]?.lowercase() ?: "up"
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        return if (audioManager != null) {
+            when (direction) {
+                "down" -> audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+                "mute" -> audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI)
+                else -> audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+            }
+            IntentExecutionResult(
+                success = true,
+                actionName = ActionCatalog.SET_VOLUME,
+                userSummary = "Adjusted volume ($direction)"
+            )
+        } else {
+            IntentExecutionResult(
+                success = false,
+                actionName = ActionCatalog.SET_VOLUME,
+                userSummary = "AudioManager unavailable"
+            )
+        }
     }
 
     private fun vibrateDevice(context: Context) {

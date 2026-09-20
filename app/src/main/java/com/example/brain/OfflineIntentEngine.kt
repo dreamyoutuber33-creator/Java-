@@ -49,32 +49,24 @@ object OfflineIntentEngine {
                 }
             }
         }
-        // 2. YOUTUBE SEARCH & OPEN APP COMBINATION
+        // 2. YOUTUBE SEARCH & MULTI-STEP ACTION
         else if (lower.contains("youtube")) {
-            val hasSearch = lower.contains("search") || lower.contains("chalao") || lower.contains("play") || lower.contains("dekho")
-            if (lower.contains("open") && hasSearch) {
-                val query = extractQueryAfter(lower, listOf("search", "chalao", "play", "karo", "aur"))
-                val q = if (query.isNotBlank()) query else "Technical Guruji"
-                actions.add(JavaAction(ActionCatalog.OPEN_APP, mapOf("app_name" to "youtube")))
-                actions.add(JavaAction(ActionCatalog.YOUTUBE_SEARCH, mapOf("query" to q)))
-                speech = when (detectedLang) {
-                    "Hindi", "Hinglish" -> "YouTube kholkar $q search kar raha hoon."
-                    else -> "Opening YouTube and searching for $q."
-                }
-            } else if (hasSearch) {
-                val query = extractQueryAfter(lower, listOf("search", "chalao", "play", "for", "pe", "par"))
-                val q = if (query.isNotBlank()) query else "Trending videos"
-                actions.add(JavaAction(ActionCatalog.YOUTUBE_SEARCH, mapOf("query" to q)))
-                speech = when (detectedLang) {
-                    "Hindi", "Hinglish" -> "YouTube par $q chala raha hoon."
-                    else -> "Searching YouTube for $q."
-                }
+            val hasSearch = lower.contains("search") || lower.contains("chalao") || lower.contains("play") || lower.contains("dekho") || lower.contains("dhoondho")
+            if (hasSearch) {
+                val q = extractSearchQuery(cleanInput)
+                val targetQuery = if (q.isNotBlank()) q else "Videos"
+                actions.add(JavaAction(ActionCatalog.OPEN_APP, mapOf("app_name" to "YouTube")))
+                actions.add(JavaAction(ActionCatalog.CLICK_ON_SCREEN, mapOf("target_text" to "Search")))
+                actions.add(JavaAction(ActionCatalog.TYPE_TEXT, mapOf("text" to targetQuery)))
+                actions.add(JavaAction(ActionCatalog.SYSTEM_GESTURE, mapOf("type" to "press_enter")))
+                speech = "$targetQuery search kar diya hai."
+            } else if (lower.contains("shorts")) {
+                actions.add(JavaAction(ActionCatalog.OPEN_APP, mapOf("app_name" to "YouTube")))
+                actions.add(JavaAction(ActionCatalog.CLICK_ON_SCREEN, mapOf("target_text" to "Shorts")))
+                speech = "YouTube Shorts chala raha hoon."
             } else {
-                actions.add(JavaAction(ActionCatalog.OPEN_APP, mapOf("app_name" to "youtube")))
-                speech = when (detectedLang) {
-                    "Hindi", "Hinglish" -> "YouTube open kar raha hoon."
-                    else -> "Opening YouTube."
-                }
+                actions.add(JavaAction(ActionCatalog.OPEN_APP, mapOf("app_name" to "YouTube")))
+                speech = "YouTube open kar raha hoon."
             }
         }
         // 3. SET ALARM
@@ -605,5 +597,10 @@ object OfflineIntentEngine {
             .replace("button", "", ignoreCase = true)
             .trim()
         return clean.ifBlank { "Next" }
+    }
+
+    private fun extractSearchQuery(text: String): String {
+        return text.replace(Regex("(?i)\\b(youtube|open|kholo|search|karo|chalao|play|dekho|dhoondho|me|par|pe|for|in|aur|ko)\\b"), "")
+            .trim()
     }
 }
